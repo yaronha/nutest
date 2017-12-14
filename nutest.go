@@ -22,6 +22,7 @@ import (
 	"github.com/v3io/v3io-go-http"
 	"github.com/pkg/errors"
 	"time"
+	"fmt"
 )
 
 // Wrapper for invoking nuclio functions
@@ -31,7 +32,8 @@ import (
 // func main()  {
 // 	data  := nutest.DataBind{Name:"db0", Url:"<v3io-IP:Port>", Container:"<data-container-name>"}
 // 	event := nutest.TestEvent{Body: []byte("test")}
-// 	nutest.Invoke(MyHandler, &event, &data)
+// 	nutest.Invoke(MyHandler, nutest.TestSpec{
+// 		Event:&event, Data:&data, LogLevel:nucliozap.InfoLevel})
 // }
 //
 // func MyHandler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
@@ -39,34 +41,46 @@ import (
 // 	return "resp", nil
 // }
 //
-func Invoke(nfunc func(context *nuclio.Context, event nuclio.Event)(interface {}, error), event *TestEvent, data *DataBind) error {
-	logger, err := nucliozap.NewNuclioZapCmd("emulator", nucliozap.DebugLevel)
+
+type TestSpec struct {
+	LogLevel nucliozap.Level
+	Event    *TestEvent
+	Data     *DataBind
+}
+
+func Invoke(nfunc func(context *nuclio.Context, event nuclio.Event)(interface {}, error), spec TestSpec) error {
+	//if spec.LogLevel == nil {
+	//	spec.LogLevel = nucliozap.InfoLevel
+	//}
+
+	logger, err := nucliozap.NewNuclioZapCmd("emulator", spec.LogLevel)
 	if err != nil {
 		return errors.Wrap(err, "Failed to create logger")
 	}
 
 	db := map[string]nuclio.DataBinding{}
-	if data != nil {
-		container, err := createContainer(logger, data.Url, data.Container)
+	if spec.Data != nil {
+		container, err := createContainer(logger, spec.Data.Url, spec.Data.Container)
 		if err != nil {
 			logger.ErrorWith("Failed to createContainer", "err", err)
 			return errors.Wrap(err, "Failed to createContainer")
 		}
 
-		if data.Name == "" {
-			data.Name = "db0"
+		if spec.Data.Name == "" {
+			spec.Data.Name = "db0"
 		}
-		db[data.Name] = container
+		db[spec.Data.Name] = container
 	}
 
 	context := nuclio.Context{Logger:logger, DataBinding:db}
 
-	body, err := nfunc(&context, event)
+	body, err := nfunc(&context, spec.Event)
 	if err != nil {
 		logger.ErrorWith("Function execution failed", "err", err)
 		return err
 	}
 	logger.InfoWith("Function completed","output",body)
+	fmt.Println(body)
 
 	return nil
 }

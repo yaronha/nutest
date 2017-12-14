@@ -10,16 +10,18 @@ package main
 import (
 	"github.com/yaronha/nutest"
 	"github.com/nuclio/nuclio-sdk"
+	"github.com/nuclio/nuclio/pkg/zap"
 )
 
 
 func main()  {
-	// data binding for V3IO data containers, optional, can use nil instead 
+	// data binding for V3IO data containers, optional 
 	data := nutest.DataBind{Name:"db0", Url:Url:"<v3io-IP:Port>", Container:"<data-container-name>"}
 	// event data 
 	event := nutest.TestEvent{Body: []byte("test")}
 	
-	nutest.Invoke(MyHandler, &event, &data)
+	nutest.Invoke(MyHandler, nutest.TestSpec{
+		Event:&event, Data:&data, LogLevel:nucliozap.InfoLevel})
 }
 
 // nuclio function 
