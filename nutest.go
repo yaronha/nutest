@@ -47,12 +47,6 @@ func main() {
 
 */
 
-type TestSpec struct {
-	LogLevel nucliozap.Level
-	Event    *TestEvent
-	Data     *DataBind
-}
-
 func NewTestContext(function func(context *nuclio.Context, event nuclio.Event)(interface {}, error),
 	   verbose bool, data  *DataBind) (*TestContext, error) {
 	newTest := TestContext{Data:data}
