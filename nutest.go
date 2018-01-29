@@ -17,30 +17,35 @@ limitations under the License.
 package nutest
 
 import (
-	"github.com/nuclio/nuclio/pkg/zap"
-	"github.com/nuclio/nuclio-sdk"
+	"github.com/nuclio/zap"
+	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/v3io/v3io-go-http"
 	"github.com/pkg/errors"
-	"time"
-	"fmt"
+	"github.com/nuclio/logger"
 )
 
-// Wrapper for invoking nuclio functions
-//
-// Usage example:
-//
-// func main()  {
-// 	data  := nutest.DataBind{Name:"db0", Url:"<v3io-IP:Port>", Container:"<data-container-name>"}
-// 	event := nutest.TestEvent{Body: []byte("test")}
-// 	nutest.Invoke(MyHandler, nutest.TestSpec{
-// 		Event:&event, Data:&data, LogLevel:nucliozap.InfoLevel})
-// }
-//
-// func MyHandler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
-// 	context.Logger.Debug("some text")
-// 	return "resp", nil
-// }
-//
+/* Wrapper for invoking nuclio functions
+
+Usage example:
+
+func main() {
+	data := DataBind{Name:"db0", Url:"192.168.1.1", Container:"x"}
+	tc, err := NewTestContext(MyHandler, true, &data )
+	if err != nil {
+		panic(err)
+	}
+
+	testEvent := TestEvent{
+		Path: "/some/path",
+		Body: []byte("1234"),
+		Headers:map[string]interface{}{"first": "something"},
+	}
+	resp, err := tc.Invoke(&testEvent)
+	fmt.Println("resp:", resp)
+	fmt.Println("err:", err)
+}
+
+*/
 
 type TestSpec struct {
 	LogLevel nucliozap.Level
@@ -48,44 +53,68 @@ type TestSpec struct {
 	Data     *DataBind
 }
 
-func Invoke(nfunc func(context *nuclio.Context, event nuclio.Event)(interface {}, error), spec TestSpec) error {
+func NewTestContext(function func(context *nuclio.Context, event nuclio.Event)(interface {}, error),
+	   verbose bool, data  *DataBind) (*TestContext, error) {
+	newTest := TestContext{Data:data}
+	if verbose {
+		newTest.LogLevel = nucliozap.DebugLevel
+	} else {
+		newTest.LogLevel = nucliozap.InfoLevel
+	}
+
+	logger, err := nucliozap.NewNuclioZapCmd("emulator", newTest.LogLevel)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to create logger")
+	}
+
+	newTest.logger = logger
+
+	db := map[string]nuclio.DataBinding{}
+	if data != nil {
+		container, err := createContainer(logger, data.Url, data.Container)
+		if err != nil {
+			logger.ErrorWith("Failed to createContainer", "err", err)
+			return nil, errors.Wrap(err, "Failed to createContainer")
+		}
+
+		if data.Name == "" {
+			data.Name = "db0"
+		}
+		db[data.Name] = container
+	}
+
+	newTest.context = nuclio.Context{Logger:logger, DataBinding:db}
+	newTest.function = function
+
+
+	return &newTest, nil
+}
+
+type TestContext struct {
+	LogLevel  nucliozap.Level
+	logger    logger.Logger
+	Data      *DataBind
+	context   nuclio.Context
+	function  func(context *nuclio.Context, event nuclio.Event)(interface {}, error)
+}
+
+func (tc *TestContext) Invoke(event nuclio.Event) (interface{}, error) {
 	//if spec.LogLevel == nil {
 	//	spec.LogLevel = nucliozap.InfoLevel
 	//}
 
-	logger, err := nucliozap.NewNuclioZapCmd("emulator", spec.LogLevel)
+
+	body, err := tc.function(&tc.context, event)
 	if err != nil {
-		return errors.Wrap(err, "Failed to create logger")
+		tc.logger.ErrorWith("Function execution failed", "err", err)
+		return body, err
 	}
+	tc.logger.InfoWith("Function completed","output",body)
 
-	db := map[string]nuclio.DataBinding{}
-	if spec.Data != nil {
-		container, err := createContainer(logger, spec.Data.Url, spec.Data.Container)
-		if err != nil {
-			logger.ErrorWith("Failed to createContainer", "err", err)
-			return errors.Wrap(err, "Failed to createContainer")
-		}
-
-		if spec.Data.Name == "" {
-			spec.Data.Name = "db0"
-		}
-		db[spec.Data.Name] = container
-	}
-
-	context := nuclio.Context{Logger:logger, DataBinding:db}
-
-	body, err := nfunc(&context, spec.Event)
-	if err != nil {
-		logger.ErrorWith("Function execution failed", "err", err)
-		return err
-	}
-	logger.InfoWith("Function completed","output",body)
-	fmt.Println(body)
-
-	return nil
+	return body, err
 }
 
-func createContainer(logger nuclio.Logger, addr, cont string) (*v3io.Container, error) {
+func createContainer(logger logger.Logger, addr, cont string) (*v3io.Container, error) {
 	// create context
 	context, err := v3io.NewContext(logger, addr , 8)
 	if err != nil {
@@ -114,102 +143,3 @@ type DataBind struct {
 	User        string
 	Password    string
 }
-
-type TestEvent struct {
-	Body               []byte
-	ContentType        string
-	sourceInfoProvider nuclio.SourceInfoProvider
-	id                 nuclio.ID
-	emptyByteArray     []byte
-	emptyHeaders       map[string]interface{}
-	emptyTime          time.Time
-}
-
-var ErrUnsupported = errors.New("Event does not support this interface")
-
-func (te *TestEvent) GetVersion() int {
-	return 0
-}
-
-func (te *TestEvent) SetSourceProvider(sourceInfoProvider nuclio.SourceInfoProvider) {
-	te.sourceInfoProvider = sourceInfoProvider
-}
-
-func (te *TestEvent) GetSource() nuclio.SourceInfoProvider {
-	return te.sourceInfoProvider
-}
-
-func (te *TestEvent) GetID() nuclio.ID {
-	return te.id
-}
-
-func (te *TestEvent) SetID(id nuclio.ID) {
-	te.id = id
-}
-
-func (te *TestEvent) GetContentType() string {
-	return te.ContentType
-}
-
-func (te *TestEvent) GetBody() []byte {
-	return te.Body
-}
-
-func (te *TestEvent) GetSize() int {
-	return 0
-}
-
-func (te *TestEvent) GetHeader(key string) interface{} {
-	return nil
-}
-
-func (te *TestEvent) GetHeaderByteSlice(key string) []byte {
-	return te.emptyByteArray
-}
-
-func (te *TestEvent) GetHeaderString(key string) string {
-	return string(te.GetHeaderByteSlice(key))
-}
-
-func (te *TestEvent) GetHeaders() map[string]interface{} {
-	return te.emptyHeaders
-}
-
-func (te *TestEvent) GetTimestamp() time.Time {
-	return te.emptyTime
-}
-
-func (te *TestEvent) GetPath() string {
-	return ""
-}
-
-func (te *TestEvent) GetURL() string {
-	return ""
-}
-
-func (te *TestEvent) GetMethod() string {
-	return ""
-}
-
-func (te *TestEvent) GetField(key string) interface{} {
-	return nil
-}
-
-func (te *TestEvent) GetFieldByteSlice(key string) []byte {
-	return nil
-}
-
-func (te *TestEvent) GetFieldString(key string) string {
-	return ""
-}
-
-func (te *TestEvent) GetFieldInt(key string) (int, error) {
-	return 0, ErrUnsupported
-}
-
-func (te *TestEvent) GetFields() map[string]interface{} {
-	return nil
-}
-
-
-
