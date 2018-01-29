@@ -8,26 +8,30 @@ Test nuclio functions locally
 package main
 
 import (
-	"github.com/yaronha/nutest"
-	"github.com/nuclio/nuclio-sdk"
-	"github.com/nuclio/nuclio/pkg/zap"
+	"github.com/nuclio/nuclio-sdk-go"
+	"fmt"
 )
 
-
-func main()  {
+func main() {
 	// data binding for V3IO data containers, optional 
-	data := nutest.DataBind{Name:"db0", Url:Url:"<v3io-IP:Port>", Container:"<data-container-name>"}
-	// event data 
-	event := nutest.TestEvent{Body: []byte("test")}
+	data := DataBind{Name:"db0", Url:"192.168.1.1", Container:"x"}
+
+	// Create TestContext and specify the function name, verbose, data 
+	tc, err := NewTestContext(MyHandler, true, &data )
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a new test event 
+	testEvent := TestEvent{
+		Path: "/some/path",
+		Body: []byte("1234"),
+		Headers:map[string]interface{}{"first": "something"},
+	}
 	
-	nutest.Invoke(MyHandler, nutest.TestSpec{
-		Event:&event, Data:&data, LogLevel:nucliozap.InfoLevel})
+	// invoke the tested function with the new event and print it's output 
+	resp, err := tc.Invoke(&testEvent)
+	fmt.Println("resp:", resp)
+	fmt.Println("err:", err)
 }
-
-// nuclio function 
-func MyHandler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
-	context.Logger.Debug("test")
-	return "resp", nil
-}
-
 ```
