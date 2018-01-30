@@ -61,7 +61,7 @@ func NewTestContext(function func(context *nuclio.Context, event nuclio.Event)(i
 		return nil, errors.Wrap(err, "Failed to create logger")
 	}
 
-	newTest.logger = logger
+	newTest.Logger = logger
 
 	db := map[string]nuclio.DataBinding{}
 	if data != nil {
@@ -86,7 +86,7 @@ func NewTestContext(function func(context *nuclio.Context, event nuclio.Event)(i
 
 type TestContext struct {
 	LogLevel  nucliozap.Level
-	logger    logger.Logger
+	Logger    logger.Logger
 	Data      *DataBind
 	context   nuclio.Context
 	function  func(context *nuclio.Context, event nuclio.Event)(interface {}, error)
@@ -100,10 +100,10 @@ func (tc *TestContext) Invoke(event nuclio.Event) (interface{}, error) {
 
 	body, err := tc.function(&tc.context, event)
 	if err != nil {
-		tc.logger.ErrorWith("Function execution failed", "err", err)
+		tc.Logger.ErrorWith("Function execution failed", "err", err)
 		return body, err
 	}
-	tc.logger.InfoWith("Function completed","output",body)
+	tc.Logger.InfoWith("Function completed","output",body)
 
 	return body, err
 }

@@ -3,7 +3,6 @@ package nutest
 import (
 	"testing"
 	"github.com/nuclio/nuclio-sdk-go"
-	"fmt"
 )
 
 func MyHandler(context *nuclio.Context, event nuclio.Event) (interface{}, error) {
@@ -28,7 +27,6 @@ func TestName(t *testing.T) {
 		Headers:map[string]interface{}{"first": "string", "sec": "1"},
 		}
 	resp, err := tc.Invoke(&testEvent)
-	fmt.Println("resp:", resp)
-	fmt.Println("err:", err)
+	tc.Logger.InfoWith("Run complete", "resp", resp, "err", err)
 }
 
